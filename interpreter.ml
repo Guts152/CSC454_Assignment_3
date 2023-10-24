@@ -886,20 +886,56 @@ and interpret_read (id:string) (loc:row_col) (mem:memory)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   let old_v = lookup_mem id loc mem in
-  match inp with
-  | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
-  | str :: rest ->
-      if String.contains str '.'
-        then
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          (Good, mem, inp, outp)
-        else
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          (Good, mem, inp, outp)
+  match old_v with
+  | Error _ ->
+    (* if the variable is not declared, return an error *)
+    (Bad, mem, inp, outp @ [complaint loc "variable not declared"])
+  | _ ->
+    (* if is declared, continue to check the input value *)
+    match inp with
+    | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
+    | str :: rest ->
+        if String.contains str '.'
+          then
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Rvalue _ ->
+              (* try to convert the string to a float value *)
+              let r = try Some(float_of_string str) with Failure _ -> None in
+              begin
+                match r with 
+                | Some value ->
+                  (* success, update the memory value*)
+                  let new_mem = update_mem id (Rvalue value) mem in
+                  (Good, new_mem, rest, outp)
+                | None -> 
+                  (* fail, return error *)
+                  (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+              end
+            | _ ->
+              (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
+          else
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Ivalue _ ->
+                (* try to convert the string to a integer value *)
+                let i = try Some(int_of_string str) with Failure _ -> None in
+                begin
+                  match i with 
+                  | Some value ->
+                    (* success, update the memory value*)
+                    let new_mem = update_mem id (Ivalue value) mem in
+                    (Good, new_mem, rest, outp)
+                  | None -> 
+                    (* fail, return error *)
+                    (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+                end
+              | _ ->
+                (Bad, mem, rest, outp @ [complaint loc "read read when int is expected"])
 
 (* NB: the following routine is complete. *)
 and interpret_write (expr:ast_e) (mem:memory)
