@@ -758,6 +758,7 @@ let pp_p (sl:ast_sl) = print_string ("[ " ^ (pp_sl sl "  ") ^ "\n]\n");;
 type value =
 | Ivalue of int
 | Rvalue of float
+| Bvalue of bool
 | Error of string;;
 
 type 'a stack = 'a list;;
@@ -802,13 +803,8 @@ let rec update_mem (id:string) (v:value) (mem:memory) : memory =
       | Some _ -> ((id, v) :: (filter (fun (sym, _) -> id <> sym) scope))
                   :: surround
       | None   -> scope :: (update_mem id v surround);;
-
-let rec contains_check (sl:ast_sl) : bool = 
-  List.exists(function
-      | AST_check _-> true
-      | AST_do nested_sl -> contains_check sl
-      | _-> false
-  )sl
+    
+      
 
 type status =
 | Good
@@ -979,36 +975,27 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
           (Good, updated_mem, inp, outp)
 
 and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
-                (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (* NOTICE: your code should replace the following line. *)
-  let (cond_val, new_mem) = interpret_cond cond mem in 
-    match cond_val with
-    | Ivalue 1 | Ivalue 0 -> (Good, new_mem, inp, outp)
-    | _ -> (Bad, new_mem, inp, outp)
+          (inp:string list) (outp:string list)
+        : status * memory * string list * string list =
+        match interpret_cond cond mem with
+        | (Bvalue(true), new_mem) -> interpret_sl loop_count true sl new_mem inp outp
+        | (Bvalue(false), new_mem) -> (Good, new_mem, inp, outp)
+        | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
 and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
-(*  ok?    new_mem  new_input     new_output *)
-(* NOTICE: your code should replace the following line *)
-match (contains_check sl) with
-| false ->(Bad, [], [], outp @ ["Error: Loop without a check statement"])
-| true -> interpret_sl loop_count true sl mem inp outp
-| _ ->(Bad, mem, inp, outp @ ["Error: Unexpected error."])
+    interpret_sl (loop_count + 1) true sl mem inp outp
 
 and interpret_check (cond:ast_c) (mem:memory)
-                    (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (* NOTICE: your code should replace the following line. *)
-  let (cond_val, new_mem) = interpret_cond cond mem in 
-    match cond_val with
-    | Ivalue 1 | Ivalue 0 -> (Good, new_mem, inp, outp)
-    | _ -> (Bad, new_mem, inp, outp)
-  
+    (inp:string list) (outp:string list)
+  : status * memory * string list * string list =
+  match interpret_cond cond mem with
+  | (Bvalue(true), new_mem) -> (Good, new_mem, inp, outp @ ["Check succeeded!"])
+  | (Bvalue(false), new_mem) -> (Done, new_mem, inp, outp @ ["Check failed!"])
+  | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
+  
 and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
   match expr with
   | AST_int (str, loc) ->
@@ -1094,42 +1081,42 @@ and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
     | (_, _) -> 
       (Error (complaint loc "Type mismatch in binary operation"), m2)
 
-      and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) mem =
+
+and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) mem =
       (* Evaluate left and right operands *)
       let (lval, mem1) = interpret_expr lo mem in
       let (rval, mem2) = interpret_expr ro mem1 in
-      
+  
       match op, lval, rval with
-      | "==", Ivalue li, Ivalue ri when li = ri -> (Ivalue 1, mem2)
-      | "==", Rvalue lf, Rvalue rf when lf = rf -> (Ivalue 1, mem2)
-      
-      | "!=", Ivalue li, Ivalue ri when li <> ri -> (Ivalue 1, mem2)
-      | "!=", Rvalue lf, Rvalue rf when lf <> rf -> (Ivalue 1, mem2)
-    
-      | "<", Ivalue li, Ivalue ri when li < ri -> (Ivalue 1, mem2)
-      | "<", Rvalue lf, Rvalue rf when lf < rf -> (Ivalue 1, mem2)
-    
-      | ">", Ivalue li, Ivalue ri when li > ri -> (Ivalue 1, mem2)
-      | ">", Rvalue lf, Rvalue rf when lf > rf -> (Ivalue 1, mem2)
-
-      | ">=", Ivalue li, Ivalue ri when li > ri -> (Ivalue 1, mem2)
-      | ">=", Rvalue lf, Rvalue rf when lf > rf -> (Ivalue 1, mem2)
-      
-      | "<=", Ivalue li, Ivalue ri when li < ri -> (Ivalue 1, mem2)
-      | "<=", Rvalue lf, Rvalue rf when lf < rf -> (Ivalue 1, mem2)
-    
+      | "==", Ivalue li, Ivalue ri -> (Bvalue (li = ri), mem2)
+      | "==", Rvalue lf, Rvalue rf -> (Bvalue (lf = rf), mem2)
+        
+      | "!=", Ivalue li, Ivalue ri -> (Bvalue (li <> ri), mem2)
+      | "!=", Rvalue lf, Rvalue rf -> (Bvalue (lf <> rf), mem2)
+  
+      | "<", Ivalue li, Ivalue ri -> (Bvalue (li < ri), mem2)
+      | "<", Rvalue lf, Rvalue rf -> (Bvalue (lf < rf), mem2)
+  
+      | ">", Ivalue li, Ivalue ri -> (Bvalue (li > ri), mem2)
+      | ">", Rvalue lf, Rvalue rf -> (Bvalue (lf > rf), mem2)
+  
+      | ">=", Ivalue li, Ivalue ri -> (Bvalue (li >= ri), mem2)
+      | ">=", Rvalue lf, Rvalue rf -> (Bvalue (lf >= rf), mem2)
+  
+      | "<=", Ivalue li, Ivalue ri -> (Bvalue (li <= ri), mem2)
+      | "<=", Rvalue lf, Rvalue rf -> (Bvalue (lf <= rf), mem2)
+  
       | _, Error e, _ -> (Error e, mem2)
       | _, _, Error e -> (Error e, mem2)
-      
+  
       | _, Ivalue _, Rvalue _ -> 
           (Error (complaint loc "Type mismatch: int and float"), mem2)
-    
+  
       | _, Rvalue _, Ivalue _ -> 
           (Error (complaint loc "Type mismatch: float and int"), mem2)
-      
+  
       | _, _, _ -> (Error (complaint loc ("Unrecognized operation: " ^ op)), mem2)
-    
-
+  
 (*******************************************************************
     Testing
 *******************************************************************)
