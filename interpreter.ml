@@ -1,44 +1,44 @@
 (*******************************************************************
-    General-purpose LL(1) parser generator and parse tree generator,
-    with (skeleton of) a syntax tree builder and interpreter for an
-    extended calculator language.
+  General-purpose LL(1) parser generator and parse tree generator,
+  with (skeleton of) a syntax tree builder and interpreter for an
+  extended calculator language.
 
-    (c) Michael L. Scott, 2023
-    For use by students in CSC 2/454 at the University of Rochester,
-    during the Fall 2023 term.  All other use requires written
-    permission of the author.
+  (c) Michael L. Scott, 2023
+  For use by students in CSC 2/454 at the University of Rochester,
+  during the Fall 2023 term.  All other use requires written
+  permission of the author.
 
-    If compiled and run, will execute "main()".
-    Alternatively, can be "#use"-ed (or compiled and then "#load"-ed)
-    into the top-level interpreter.
- *******************************************************************)
+  If compiled and run, will execute "main()".
+  Alternatively, can be "#use"-ed (or compiled and then "#load"-ed)
+  into the top-level interpreter.
+*******************************************************************)
 
 open List;;
 (* The List library includes a large collection of useful functions.
-   In the provided code, I've used assoc, exists, filter, find,
-   find_opt, fold_left, hd, length, map, and rev.
+  In the provided code, I've used assoc, exists, filter, find,
+  find_opt, fold_left, hd, length, map, and rev.
 *)
 
 open Str;;      (* for regexp and split *)
 (* The Str library provides a few extra string-processing routines.
-   In particular, it provides "split" and "regexp", which I use to break
-   program input into whitespace-separated words.  Note, however, that
-   this library is not automatically available.  If you are using the
-   top-level interpreter, you have to say
+  In particular, it provides "split" and "regexp", which I use to break
+  program input into whitespace-separated words.  Note, however, that
+  this library is not automatically available.  If you are using the
+  top-level interpreter, you have to say
         #load "str.cma";;
-   before you say
+  before you say
         #use "interpreter.ml";;
-   If you are generating an executable from the shell, you have to
-   include the library name on the command line:
+  If you are generating an executable from the shell, you have to
+  include the library name on the command line:
         ocamlc -o interpreter str.cma interpreter.ml
 *)
 
 (*******************************************************************
     Preliminaries.
- *******************************************************************)
+*******************************************************************)
 
 (* Surprisingly, compose isn't built in.  It's included in various
-   widely used commercial packages, but not in the core libraries. *)
+  widely used commercial packages, but not in the core libraries. *)
 let compose f g x = f (g x);;
 
 (* is e a member of list l? *)
@@ -50,13 +50,13 @@ let rec sort l =
     match l with
     | []        -> (left, right)
     | c :: rest -> if c < pivot
-                   then partition pivot rest (c :: left) right
-                   else partition pivot rest left (c :: right) in
+                  then partition pivot rest (c :: left) right
+                  else partition pivot rest left (c :: right) in
   match l with
   | []        -> l
   | h :: []   -> l
   | h :: rest -> let (left, right) = partition h rest [] [] in
-                 (sort left) @ [h] @ (sort right);;
+                (sort left) @ [h] @ (sort right);;
 
 (* Leave only one of any consecutive identical elements in list. *)
 let rec unique l =
@@ -70,7 +70,7 @@ let rec unique l =
 let unique_sort l = unique (sort l);;
 
 (* Join two strings with a given separator in between
-   -- but only if both are non-null. *)
+  -- but only if both are non-null. *)
 let str_cat sep a b =
   match (a, b) with
   | (a, "") -> a
@@ -85,7 +85,7 @@ let str_cat sep a b =
     however, if I could experiment with changes to the language without
     having to change the parser by hand.  So we have here a complete
     parser generator.
- *******************************************************************)
+*******************************************************************)
 
 type symbol_productions = (string * string list list);;
 type grammar = symbol_productions list;;
@@ -109,9 +109,9 @@ let ecg : grammar =             (* extended calculator grammar *)
   [ ("P",  [["SL"; "$$"]])
   ; ("SL", [["S"; "SL"]; []])
   ; ("S",  [ ["int"; "id"; ":="; "E"]; ["real"; "id"; ":="; "E"]
-           ; ["id"; ":="; "E"]; ["read"; "TP"; "id"]; ["write"; "E"]
-           ; ["if"; "C"; "SL"; "fi"]; ["do"; "SL"; "od"]; ["check"; "C"]
-           ])
+          ; ["id"; ":="; "E"]; ["read"; "TP"; "id"]; ["write"; "E"]
+          ; ["if"; "C"; "SL"; "fi"]; ["do"; "SL"; "od"]; ["check"; "C"]
+          ])
   ; ("TP", [["int"]; ["real"]; []])
   ; ("C",  [["E"; "RO"; "E"]])
   ; ("RO", [["=="]; ["!="]; ["<"]; [">"]; ["<="]; [">="]])
@@ -120,7 +120,7 @@ let ecg : grammar =             (* extended calculator grammar *)
   ; ("T",  [["F"; "FT"]])
   ; ("FT", [["MO"; "F"; "FT"]; []])
   ; ("F",  [["id"]; ["i_num"]; ["r_num"]; ["("; "E"; ")"]
-           ; ["trunc"; "("; "E"; ")"]; ["float"; "("; "E"; ")"]])
+          ; ["trunc"; "("; "E"; ")"]; ["float"; "("; "E"; ")"]])
   ; ("AO", [["+"]; ["-"]])
   ; ("MO", [["*"]; ["/"]])
   ];;
@@ -136,7 +136,7 @@ let gsymbols gram : string list =
     (fold_left (@) [] (map (compose (fold_left (@) []) snd) gram));;
 
 (* Return all elements of l that are not in to_exclude.
-   Assume that both lists are sorted. *)
+  Assume that both lists are sorted. *)
 let list_minus l to_exclude =
   let rec helper rest te rtn =
     match rest with
@@ -166,7 +166,7 @@ let is_terminal e gram = member e (terminals gram);;
 let union s1 s2 = unique_sort (s1 @ s2);;
 
 (* Return suffix of lst that begins with first occurrence of sym
-   (or [] if there is no such occurrence). *)
+  (or [] if there is no such occurrence). *)
 let rec suffix sym lst = 
   match lst with
   | [] -> []
@@ -174,8 +174,8 @@ let rec suffix sym lst =
               then lst else suffix sym t;;
 
 (* Return a list of pairs.
-   Each pair consists of a symbol A and a list of symbols beta
-   such that for some alpha, A -> alpha B beta. *)
+  Each pair consists of a symbol A and a list of symbols beta
+  such that for some alpha, A -> alpha B beta. *)
 type right_context = (string * string list) list;;
 let get_right_context (b:string) gram : right_context =
   fold_left (@) []
@@ -188,7 +188,7 @@ let get_right_context (b:string) gram : right_context =
                       | x :: beta  -> (* assert x = b *)
                                       helper ((a, beta) :: accum) beta in
                     helper [] (snd prod))
-                 (productions gram));;
+                (productions gram));;
 
 (********
     Parser generator starts here.
@@ -208,30 +208,30 @@ let get_symbol_knowledge (a:string) (kdg:knowledge) : symbol_knowledge =
   find (fun (s, e, fi, fo) -> s = a) kdg;;
 
 (* Can word list w generate epsilon based on current estimates?
-   if w is an empty list, yes
-   if w is a single terminal, no
-   if w is a single nonterminal, look it up
-   if w is a non-empty list, "iterate" over elements *)
+  if w is an empty list, yes
+  if w is a single terminal, no
+  if w is a single nonterminal, look it up
+  if w is a non-empty list, "iterate" over elements *)
 let rec generates_epsilon (w:string list) (kdg:knowledge) gram : bool =
   match w with
   | [] -> true
   | h :: t -> if is_terminal h gram then false
               else eps_field (get_symbol_knowledge h kdg)
-                   && generates_epsilon t kdg gram;;
+                  && generates_epsilon t kdg gram;;
 
 (* Return FIRST(w), based on current estimates.
-   if w is an empty list, return []  [empty set]
-   if w is a single terminal, return [w]
-   if w is a single nonterminal, look it up
-   if w is a non-empty list, "iterate" over elements *)
+  if w is an empty list, return []  [empty set]
+  if w is a single terminal, return [w]
+  if w is a single nonterminal, look it up
+  if w is a non-empty list, "iterate" over elements *)
 let rec first (w:string list) (kdg:knowledge) gram : (string list) =
   match w with
   | [] -> []
   | x :: _ when is_terminal x gram -> [x]
   | x :: rest -> let s = first_field (get_symbol_knowledge x kdg) in
-                 if generates_epsilon [x] kdg gram
-                 then union s (first rest kdg gram)
-                 else s;;
+                if generates_epsilon [x] kdg gram
+                then union s (first rest kdg gram)
+                else s;;
 
 let follow (a:string) (kdg:knowledge) : string list =
   follow_field (get_symbol_knowledge a kdg);;
@@ -243,17 +243,17 @@ let rec map3 f l1 l2 l3 =
   | _ -> raise (Failure "mismatched_lists in map3");;
 
 (* Return knowledge structure for grammar.
-   Start with (initial_knowledge grammar) and "iterate",
-   until the structure doesn't change.
-   Uses (get_right_context B gram), for all nonterminals B,
-   to help compute follow sets. *)
+  Start with (initial_knowledge grammar) and "iterate",
+  until the structure doesn't change.
+  Uses (get_right_context B gram), for all nonterminals B,
+  to help compute follow sets. *)
 let get_knowledge gram : knowledge =
   let nts : string list = nonterminals gram in
   let right_contexts : right_context list
-     = map (fun s -> get_right_context s gram) nts in
+    = map (fun s -> get_right_context s gram) nts in
   let rec helper kdg =
     let update : symbol_knowledge -> symbol_productions
-                   -> right_context -> symbol_knowledge
+                  -> right_context -> symbol_knowledge
           = fun old_sym_kdg sym_prods sym_right_context ->
       let my_first s = first s kdg gram in
       let my_eps s = generates_epsilon s kdg gram in
@@ -273,7 +273,7 @@ let get_knowledge gram : knowledge =
                                               match snd p with
                                               | [] -> []
                                               | h :: t -> [h])
-                                           sym_right_context))))
+                                          sym_right_context))))
               (fold_left union [] (map filtered_follow sym_right_context))
       ) in    (* end of update *)
     let new_kdg = map3 update kdg gram right_contexts in
@@ -287,10 +287,10 @@ let get_parse_table (gram:grammar) : parse_table =
   map (fun (lhs, rhss) ->
         (lhs, (map (fun rhs ->
                       (union (first rhs kdg gram)
-                             (if (generates_epsilon rhs kdg gram)
+                            (if (generates_epsilon rhs kdg gram)
                               then (follow lhs kdg) else []),
                       rhs))
-                   rhss)))
+                  rhss)))
       gram;;
 
 type row_col = int * int;;      (* source location *)
@@ -299,7 +299,7 @@ let complaint (loc:row_col) (msg:string) =
   Printf.sprintf " line %d, col %d: %s" l c msg;;
 
 (* Convert string to list of chars, each tagged with row and column.
-   Also return number of lines. *)
+  Also return number of lines. *)
 let explode_and_tag (s:string) : (char * row_col) list * int =
   let rec exp i r c l =
     if i = String.length s then l
@@ -308,12 +308,12 @@ let explode_and_tag (s:string) : (char * row_col) list * int =
       exp (i+1) r2 c2 ((s.[i], (r, c)) :: l) in
   let chars = exp 0 1 1 [] in
   let rows = match chars with
-             | [] -> 0
-             | (_, (r, _))::t -> r in
+            | [] -> 0
+            | (_, (r, _))::t -> r in
   (rev chars, rows)
 
 (* Convert list of char to string.
-   (This uses imperative features.  It used to be a built-in.) *)
+  (This uses imperative features.  It used to be a built-in.) *)
 let implode (l:char list) : string =
   let res = Bytes.create (length l) in
   let rec imp i l =
@@ -335,13 +335,13 @@ let tokenize (program:string) : token list =
     let rec gi tok p =
         match p with
         | (c, _) :: rest when (('a' <= c && c <= 'z')
-                               || ('A' <= c && c <= 'Z')
-                               || ('0' <= c && c <= '9') || (c = '_'))
+                              || ('A' <= c && c <= 'Z')
+                              || ('0' <= c && c <= '9') || (c = '_'))
             -> gi (c :: tok) rest
         | _ -> (implode (rev tok), p) in
     gi [] prog in
   (* get_num matches digit*(.digit*((e|E)(+|-)?digit+)?)?
-     We're pickier below -- insist on a digit on at least one side of the . *)
+    We're pickier below -- insist on a digit on at least one side of the . *)
   let get_num prog =        (* integer or real *)
     let get_int prog =          (* eat digit* *)
       let rec gi tok p =
@@ -357,18 +357,18 @@ let tokenize (program:string) : token list =
               | (s, _) :: (d, dloc) :: r2
                     when (s = '+' || s = '-') && ('0' <= d && d <= '9')
                 -> let (pow, r3) = get_int ((d, dloc) :: r2) in
-                   ((String.make 1 e) ^ (String.make 1 s) ^ pow, r3)
+                  ((String.make 1 e) ^ (String.make 1 s) ^ pow, r3)
               | (d, dloc) :: r2 when ('0' <= d && d <= '9')
                 -> let (pow, r3) = get_int ((d, dloc) :: r2) in
-                   ((String.make 1 e) ^ pow, r3)
+                  ((String.make 1 e) ^ pow, r3)
               | _ -> ("error", (e, eloc) :: r1))
       | _ -> ("", prog) in
     let (whole, r1) = get_int prog in
     match r1 with
     | ('.', _) :: r2
         -> let (frac, r3) = get_int r2 in
-           let (exp, r4) = get_exp r3 in
-           (whole ^ "." ^ frac ^ exp, r4)
+          let (exp, r4) = get_exp r3 in
+          (whole ^ "." ^ frac ^ exp, r4)
     | _ -> (whole, r1) in
   let rec get_error tok prog =
     match prog with
@@ -424,17 +424,17 @@ let tokenize (program:string) : token list =
     | "<"    | "<="    | ">"     | ">="    | "!="    | "==" | "$$"
         -> (nm, nm, loc)
     | _ -> match nm.[0] with
-           | '.' -> (try    (* insist on digit on at least one side of . *)
-                       if ('0' <= nm.[1] && nm.[1] <= '9')
-                         then ("r_num", nm, loc)
-                         else ("error", nm, loc)
-                     with Invalid_argument(_) -> ("error", nm, loc))
-           | '0'..'9' -> if String.contains nm '.'
+          | '.' -> (try    (* insist on digit on at least one side of . *)
+                      if ('0' <= nm.[1] && nm.[1] <= '9')
+                        then ("r_num", nm, loc)
+                        else ("error", nm, loc)
+                    with Invalid_argument(_) -> ("error", nm, loc))
+          | '0'..'9' -> if String.contains nm '.'
                             then ("r_num", nm, loc)
                             else ("i_num", nm, loc)
-           | 'a'..'z'
-           | 'A'..'Z' | '_' -> ("id", nm, loc)
-           | _ -> ("error", nm, loc) in
+          | 'a'..'z'
+          | 'A'..'Z' | '_' -> ("id", nm, loc)
+          | _ -> ("error", nm, loc) in
   map categorize (rev toks);;
 
 (*******************************************************************
@@ -461,13 +461,13 @@ let tokenize (program:string) : token list =
 
     Note that everything is done functionally.  We don't really modify
     the stacks; we pass new versions to tail recursive routines.
- *******************************************************************)
+*******************************************************************)
 
 (* Extract grammar from parse-tab, so we can invoke the various routines
-   that expect a grammar as argument. *)
+  that expect a grammar as argument. *)
 let grammar_of (parse_tab:parse_table) : grammar =
   map (fun p -> (fst p,
-                 (fold_left (@)
+                (fold_left (@)
                             []
                             (map (fun (a, b) -> [b]) (snd p)))))
       parse_tab;;
@@ -481,25 +481,25 @@ type parse_tree =   (* among other things, parse_trees are *)
 | PT_nt of (string * row_col * parse_tree list);;
     
 (* Pop rhs-len + 1 symbols off the attribute stack,
-   assemble into a production, and push back onto the stack. *)
+  assemble into a production, and push back onto the stack. *)
 let reduce_1_prod (astack:parse_tree list) (rhs_len:int) : parse_tree list =
   let rec helper atk k prod =
     match (k, atk) with
     | (0, PT_nt(nt, loc, []) :: t) -> PT_nt(nt, loc, prod) :: t
     | (n, h :: t) when n != 0 -> helper t (k - 1) (h :: prod)
     | _ -> raise (Failure "expected nonterminal at top of astack") in
-   helper astack rhs_len [];;
+  helper astack rhs_len [];;
 
 type parse_action = PA_error | PA_prediction of string list;;
 (* Double-index to find prediction (list of RHS symbols) for
-   nonterminal nt and terminal t.  Return PA_error if not found. *)
+  nonterminal nt and terminal t.  Return PA_error if not found. *)
 let get_parse_action (nt:string) (t:string) (parse_tab:parse_table)
     : parse_action =
   let rec helper l =
       match l with
       | [] -> PA_error
       | (fs, rhs) :: rest -> if member t fs then PA_prediction(rhs)
-                             else helper rest in
+                            else helper rest in
   helper (assoc nt parse_tab);;
 
 type ps_item =      (* elements of parse stack *)
@@ -507,9 +507,9 @@ type ps_item =      (* elements of parse stack *)
 | PS_sym of string;;
 
 (* Parse program according to grammar.
-   [Commented-out code would
-       print predictions and matches (imperatively) along the way.]
-   Return parse tree if the program is in the language; PT_error if it's not. *)
+  [Commented-out code would
+      print predictions and matches (imperatively) along the way.]
+  Return parse tree if the program is in the language; PT_error if it's not. *)
 let parse (parse_tab:parse_table) (program:string) : parse_tree =
   let die loc msg =
     begin
@@ -533,7 +533,7 @@ let parse (parse_tab:parse_table) (program:string) : parse_tree =
         match tokens with
         | [] -> die (0, 0) "unexpected end of program"
         | (term, nm, loc) :: more_tokens ->
-           (* if nm is an individual identifier or number,
+          (* if nm is an individual identifier or number,
               term will be a generic "id" or "i_num" or "r_num" *)
           if is_terminal tos gram then
             if tos = term then
@@ -542,22 +542,22 @@ let parse (parse_tab:parse_table) (program:string) : parse_tree =
                 print_string ("   match " ^ tos);
                 print_string
                     (if tos <> term      (* deep comparison *)
-                         then (" (" ^ nm ^ ")") else "");
+                        then (" (" ^ nm ^ ")") else "");
                 print_newline ();
               *)
                 helper ps_tail more_tokens
-                       (( match term with
+                      (( match term with
                           | "id"  -> PT_id(nm, loc)
                           | "i_num" -> PT_int(nm, loc)
                           | "r_num" -> PT_real(nm, loc)
                           | _     -> PT_term(nm, loc) ) :: astack)
               end
-                       (* note push of nm into astack *)
+                      (* note push of nm into astack *)
             else die loc ("expected " ^ tos ^ " ; saw " ^ nm)
           else (* nonterminal *)
             match get_parse_action tos term parse_tab with
             | PA_error -> die loc ("no prediction for " ^ tos
-                                   ^ " when seeing " ^ nm)
+                                  ^ " when seeing " ^ nm)
             | PA_prediction(rhs) ->
                 begin
                 (*
@@ -568,7 +568,7 @@ let parse (parse_tab:parse_table) (program:string) : parse_tree =
                   helper ((fold_left (@) [] 
                                     (map (fun s -> [PS_sym(s)]) rhs))
                               @ [PS_end(length rhs)] @ ps_tail)
-                         tokens (PT_nt(tos, loc, []) :: astack)
+                        tokens (PT_nt(tos, loc, []) :: astack)
                 end in
   helper [PS_sym(start_symbol gram)] (tokenize program) [];;
 
@@ -585,15 +585,15 @@ let ecg_parse_table = get_parse_table ecg;;
     complete working version available as ~cs254/bin/ecl on the caug
     machines.
 
- *******************************************************************)
+*******************************************************************)
 
 (* Syntax tree node types.
-   We distinguish between statements and expressions.
-   Comments below indicate what syntactic element in the source
-   is associated with the location [row_col] values.
-   Note that each declaration (e.g., "int foo : 3" or "read int foo")
-   is turned into a _pair_ of AST nodes -- one for the declaration
-   itself and one for the initialization.
+  We distinguish between statements and expressions.
+  Comments below indicate what syntactic element in the source
+  is associated with the location [row_col] values.
+  Note that each declaration (e.g., "int foo : 3" or "read int foo")
+  is turned into a _pair_ of AST nodes -- one for the declaration
+  itself and one for the initialization.
 *)
 
 type ast_sl = ast_s list
@@ -620,7 +620,7 @@ and ast_c = (string * ast_e * ast_e * row_col);;
                                     (* op location *)
   
 (* Convert parse tree to syntax tree.
-   Walks the parse tree using a collection of mutually recursive subroutines. *)
+  Walks the parse tree using a collection of mutually recursive subroutines. *)
 let rec ast_ize_prog (p:parse_tree) : ast_sl =
   match p with
   (* NOTICE: your code should replace the following line *)
@@ -646,18 +646,21 @@ and ast_ize_stmt (s:parse_tree) : ast_sl =
   match s with
   | PT_nt("S", _, [PT_id(lhs, vloc); PT_term(":=", aloc); expr])
       -> [AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
-         (* vloc is the place to complain about undeclared lhs;
+        (* vloc is the place to complain about undeclared lhs;
             aloc (:= sign) is the place to complain about a type clash *)
   (*
     NOTICE: your code here
   *)
   | PT_nt("S", _, [PT_term("int", _); PT_id(lhs, vloc); PT_term(":=", aloc); expr])
+      ->[AST_i_dec(lhs, vloc); AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
   | PT_nt("S", _, [PT_term("real", _); PT_id(lhs, vloc); PT_term(":=", aloc); expr])
-      ->[AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
+      ->[AST_r_dec(lhs, vloc); AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
   | PT_nt("S", _, [PT_id(lhs, vloc); PT_term(":=", aloc); expr]) 
       -> [AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
-  | PT_nt("S", _, [PT_term("read", _); _; PT_id(id, vloc)]) 
-      -> [AST_read(id, vloc)]
+  | PT_nt("S", _, [PT_term("read", _); PT_nt("TP", _, [PT_term("int", _)]); PT_id(id, id_loc)])
+      -> [AST_i_dec(id, id_loc); AST_read(id, id_loc)]
+  | PT_nt("S", _, [PT_term("read", _); PT_nt("TP", _, [PT_term("int", _)]); PT_id(id, id_loc)])
+      -> [AST_i_dec(id, id_loc); AST_read(id, id_loc)]
   | PT_nt("S", _, [PT_term("write", _); expr]) 
       -> [AST_write(ast_ize_expr expr)]
   | PT_nt("S", _, [PT_term("if", _); cond; sl; PT_term("fi", _)]) 
@@ -690,21 +693,19 @@ and ast_ize_expr_tail (lo:ast_e) (tail:parse_tree) : ast_e =   (* TT or FT *)
   match tail with
   (* NOTICE: your code here *)
   | PT_nt("TT", _, [PT_nt("AO", _, [PT_term(op, op_loc)]); t; tt]) -> AST_binop(op, lo, ast_ize_expr t, op_loc)
-  | PT_nt("FT", _, [PT_nt("FO", _, [PT_term(op, op_loc)]); f; ft]) -> AST_binop(op, lo, ast_ize_expr f, op_loc)
+  | PT_nt("FT", _, [PT_nt("MO", _, [PT_term(op, op_loc)]); f; ft]) -> AST_binop(op, lo, ast_ize_expr f, op_loc)
   | _ -> lo
 
 and ast_ize_cond (c:parse_tree) : ast_c =
   match c with
-  (*
-    NOTICE: your code here
-  *)
+  (* NOTICE: your code here *)
   | PT_nt("C", _, [left; PT_nt("RO", _, [PT_term(op, op_loc)]); right]) -> (op, ast_ize_expr left, ast_ize_expr right, op_loc)
   | _ -> raise (Failure "malformed parse tree in ast_ize_cond")
 ;;
 
 (*******************************************************************
     AST Pretty-printer.  This should be complete and usable as-is.
- *******************************************************************)
+*******************************************************************)
 
 let rec pp_sl (sl:ast_sl) (ind:string) : string =
   match sl with
@@ -752,7 +753,7 @@ let pp_p (sl:ast_sl) = print_string ("[ " ^ (pp_sl sl "  ") ^ "\n]\n");;
     unexpected end of input on read.  Respects scopes: each variable is
     visible only from its declaration to the end of the innermost
     statement list in which it is declared.
- *******************************************************************)
+*******************************************************************)
 
 type value =
 | Ivalue of int
@@ -767,7 +768,7 @@ let pop (s:'a stack) : 'a option * 'a stack =
   | x :: r -> (Some x, r);;
 
 (* Memory is a stack of scopes, with the innermost scope at the top.
-   Each scope consists of a list of (name, value) pairs. *)
+  Each scope consists of a list of (name, value) pairs. *)
 type memory = (string * value) list stack;;
 
 let new_scope (mem:memory) : memory = push [] mem;;
@@ -792,15 +793,22 @@ let insert_mem (id:string) (v:value) (mem:memory) : (memory * bool) =
       | None   -> (((id, v) :: scope) :: surround, true);;
 
 (* Should be called only after verifying (with lookup_mem) that id is
-   already present.  Throws exception if not. *)
+  already present.  Throws exception if not. *)
 let rec update_mem (id:string) (v:value) (mem:memory) : memory =
   match mem with
   | [] -> raise (Failure (id ^ " not present"))
   | scope :: surround ->
       match find_opt (name_match id) scope with
       | Some _ -> ((id, v) :: (filter (fun (sym, _) -> id <> sym) scope))
-                   :: surround
+                  :: surround
       | None   -> scope :: (update_mem id v surround);;
+
+let rec contains_check (sl:ast_sl) : bool = 
+  List.exists(function
+      | AST_check _-> true
+      | AST_do nested_sl -> contains_check sl
+      | _-> false
+  )sl
 
 type status =
 | Good
@@ -817,19 +825,27 @@ let rec interpret (ast:ast_sl) (full_input:string) : string =
     (fold_left (str_cat " ") "" outp) ^ "\n"
 
 (* iter1 indicates whether this is the first time this statement list
-   has executed in a fresh scope.  It's false for the second and
-   subsequent iterations of a do loop. *)
+  has executed in a fresh scope.  It's false for the second and
+  subsequent iterations of a do loop. *)
 and interpret_sl (loop_count:int) (iter1:bool) (sl:ast_sl) (mem:memory)
-                 (inp:string list) (outp:string list)
+                (inp:string list) (outp:string list)
     : status * memory * string list * string list =
     (*  ok?   new_mem   new_input     new_output *)
   (*
     NOTICE: your code should replace the following line.
   *)
-  (Good, mem, inp, outp)
+  match sl with
+  | [] -> (Good, mem, inp, outp)
+  | s::tl ->
+      let (status, new_mem, new_inp, new_outp) = interpret_s loop_count iter1 s mem inp outp in
+      match status with
+      | Good -> interpret_sl loop_count iter1 tl new_mem new_inp new_outp
+      | Done -> (Done, mem, new_inp, new_outp)
+      | Bad -> (Bad, new_mem, new_inp, new_outp)
+  
 
 (* NB: the following routine is complete.  You can call it on any
-   statement node and it will figure out what more specific case to invoke. *)
+  statement node and it will figure out what more specific case to invoke. *)
 and interpret_s (loop_count:int) (iter1:bool) (s:ast_s) (mem:memory)
                 (inp:string list) (outp:string list)
     : status * memory * string list * string list =
@@ -855,27 +871,79 @@ and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
   (*
     NOTICE: your code should replace the following line.
   *)
-  (Good, mem, inp, outp)
+  match lookup_mem id vloc mem with
+  | Error _ when iter1 -> 
+    (* variable not declared and it's the first iteration of a new scope, insert it into memory*)
+    let (new_mem, inserted) = insert_mem id v mem in
+    if inserted then
+      (Good, new_mem, inp, outp)
+    else
+      (* This case shouldn't occur since we check lookup_mem before, just for convenient of debugging *)
+      raise (Failure (id ^ " unexpected case during insertion"))
+  | Error _ ->
+    (* variable not declared but we are not in the first iteration of a new scope, update the memory *)
+    let new_mem = update_mem id v mem in
+    (Good, new_mem, inp, outp)
+  | _ ->
+    (* variable already declared *)
+    (Bad, mem, inp, outp @ [complaint vloc "variable already declared in this scope"])
+
 
 and interpret_read (id:string) (loc:row_col) (mem:memory)
-                   (inp:string list) (outp:string list)
+                  (inp:string list) (outp:string list)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   let old_v = lookup_mem id loc mem in
-  match inp with
-  | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
-  | str :: rest ->
-      if String.contains str '.'
-        then
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          (Good, mem, inp, outp)
-        else
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          (Good, mem, inp, outp)
+  match old_v with
+  | Error _ ->
+    (* if the variable is not declared, return an error *)
+    (Bad, mem, inp, outp @ [complaint loc "variable not declared"])
+  | _ ->
+    (* if is declared, continue to check the input value *)
+    match inp with
+    | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
+    | str :: rest ->
+        if String.contains str '.'
+          then
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Rvalue _ ->
+              (* try to convert the string to a float value *)
+              let r = try Some(float_of_string str) with Failure _ -> None in
+              begin
+                match r with 
+                | Some value ->
+                  (* success, update the memory value*)
+                  let new_mem = update_mem id (Rvalue value) mem in
+                  (Good, new_mem, rest, outp)
+                | None -> 
+                  (* fail, return error *)
+                  (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+              end
+            | _ ->
+              (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
+          else
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Ivalue _ ->
+                (* try to convert the string to a integer value *)
+                let i = try Some(int_of_string str) with Failure _ -> None in
+                begin
+                  match i with 
+                  | Some value ->
+                    (* success, update the memory value*)
+                    let new_mem = update_mem id (Ivalue value) mem in
+                    (Good, new_mem, rest, outp)
+                  | None -> 
+                    (* fail, return error *)
+                    (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+                end
+              | _ ->
+                (Bad, mem, rest, outp @ [complaint loc "read read when int is expected"])
 
 (* NB: the following routine is complete. *)
 and interpret_write (expr:ast_e) (mem:memory)
@@ -889,7 +957,7 @@ and interpret_write (expr:ast_e) (mem:memory)
     | Error(s)  -> (Bad, [], [], outp @ [s])
 
 and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
-                     (mem:memory) (inp:string list) (outp:string list)
+                    (mem:memory) (inp:string list) (outp:string list)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   match lookup_mem lhs vloc mem with
@@ -898,51 +966,173 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
       (*
         NOTICE: your code should replace the following line.
       *)
-      (Good, mem, inp, outp)
+      let (rhs_value, new_mem) = interpret_expr rhs mem in
+      match rhs_value, old_v with
+      | Ivalue _, Rvalue _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign a real value to an integer variable."])
+      | Rvalue _, Ivalue _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign an integer value to a real variable."])
+      | Error(s), _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc s])  (* Error occurred during RHS expression evaluation *)
+      | _, _ ->  (* No type mismatch or errors in evaluating the RHS expression *)
+          let updated_mem = update_mem lhs rhs_value mem in
+          (Good, updated_mem, inp, outp)
 
 and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
-                 (inp:string list) (outp:string list)
+                (inp:string list) (outp:string list)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
+  (* NOTICE: your code should replace the following line. *)
+  let (cond_val, new_mem) = interpret_cond cond mem in 
+    match cond_val with
+    | Ivalue 1 | Ivalue 0 -> (Good, new_mem, inp, outp)
+    | _ -> (Bad, new_mem, inp, outp)
 
 and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
-                 (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
+    (inp:string list) (outp:string list)
+  : status * memory * string list * string list =
+(*  ok?    new_mem  new_input     new_output *)
+(* NOTICE: your code should replace the following line *)
+match (contains_check sl) with
+| false ->(Bad, [], [], outp @ ["Error: Loop without a check statement"])
+| true -> interpret_sl loop_count true sl mem inp outp
+| _ ->(Bad, mem, inp, outp @ ["Error: Unexpected error."])
 
 and interpret_check (cond:ast_c) (mem:memory)
                     (inp:string list) (outp:string list)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
+  (* NOTICE: your code should replace the following line. *)
+  let (cond_val, new_mem) = interpret_cond cond mem in 
+    match cond_val with
+    | Ivalue 1 | Ivalue 0 -> (Good, new_mem, inp, outp)
+    | _ -> (Bad, new_mem, inp, outp)
+  
 
 and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Error("code not written yet"), mem)
+  match expr with
+  | AST_int (str, loc) ->
+    (try 
+      (Ivalue (int_of_string str), mem)
+    with
+    | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
 
-and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) (mem:memory)
-    : value * memory =
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Error("code not written yet"), mem)
+  | AST_real (str, loc) ->
+  (try 
+    (Rvalue (float_of_string str), mem)
+  with
+  | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
+
+  | AST_id(id, loc) ->
+    (match lookup_mem id loc mem with
+     | Error _ as err -> (err, mem)  (* Id not found in memory *)
+     | value -> (value, mem)  (* Found the id in memory *)
+    )
+
+  | AST_float (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Ivalue int_val -> (Rvalue (float_of_int int_val), m)  
+    | Rvalue _ -> (Error (complaint loc "Non-integer provided to float"), m) (* Error if already float *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_trunc (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Rvalue float_val -> (Ivalue (int_of_float float_val), m)
+    | Ivalue _ -> (Error (complaint loc "Non-real provided to trunc"), m) (* Error if already integer *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_binop (binop, e1, e2, loc) ->
+    let (v1, m1) = interpret_expr e1 mem in
+    let (v2, m2) = interpret_expr e2 m1 in
+    match (v1, v2) with
+    | (Ivalue i1, Ivalue i2) ->
+      begin
+        match binop with
+        | "+" -> (Ivalue (i1 + i2), m2)
+        | "-" -> (Ivalue (i1 - i2), m2)
+        | "*" -> (Ivalue (i1 * i2), m2)
+        | "/" -> if i2 != 0 then (Ivalue (i1 / i2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r1, Rvalue r2) ->  (* Both operands are real numbers *)
+      begin
+        match binop with
+        | "+" -> (Rvalue (r1 +. r2), m2)
+        | "-" -> (Rvalue (r1 -. r2), m2)
+        | "*" -> (Rvalue (r1 *. r2), m2)
+        | "/" -> if r2 != 0. then (Rvalue (r1 /. r2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Ivalue i, Rvalue r) ->  (* First operand is an integer, second is real *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (ri +. r), m2)
+        | "-" -> (Rvalue (ri -. r), m2)
+        | "*" -> (Rvalue (ri *. r), m2)
+        | "/" -> if r != 0. then (Rvalue (ri /. r), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r, Ivalue i) ->  (* First operand is real, second is integer *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (r +. ri), m2)
+        | "-" -> (Rvalue (r -. ri), m2)
+        | "*" -> (Rvalue (r *. ri), m2)
+        | "/" -> if ri != 0. then (Rvalue (r /. ri), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (_, _) -> 
+      (Error (complaint loc "Type mismatch in binary operation"), m2)
+
+      and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) mem =
+      (* Evaluate left and right operands *)
+      let (lval, mem1) = interpret_expr lo mem in
+      let (rval, mem2) = interpret_expr ro mem1 in
+      
+      match op, lval, rval with
+      | "==", Ivalue li, Ivalue ri when li = ri -> (Ivalue 1, mem2)
+      | "==", Rvalue lf, Rvalue rf when lf = rf -> (Ivalue 1, mem2)
+      
+      | "!=", Ivalue li, Ivalue ri when li <> ri -> (Ivalue 1, mem2)
+      | "!=", Rvalue lf, Rvalue rf when lf <> rf -> (Ivalue 1, mem2)
+    
+      | "<", Ivalue li, Ivalue ri when li < ri -> (Ivalue 1, mem2)
+      | "<", Rvalue lf, Rvalue rf when lf < rf -> (Ivalue 1, mem2)
+    
+      | ">", Ivalue li, Ivalue ri when li > ri -> (Ivalue 1, mem2)
+      | ">", Rvalue lf, Rvalue rf when lf > rf -> (Ivalue 1, mem2)
+
+      | ">=", Ivalue li, Ivalue ri when li > ri -> (Ivalue 1, mem2)
+      | ">=", Rvalue lf, Rvalue rf when lf > rf -> (Ivalue 1, mem2)
+      
+      | "<=", Ivalue li, Ivalue ri when li < ri -> (Ivalue 1, mem2)
+      | "<=", Rvalue lf, Rvalue rf when lf < rf -> (Ivalue 1, mem2)
+    
+      | _, Error e, _ -> (Error e, mem2)
+      | _, _, Error e -> (Error e, mem2)
+      
+      | _, Ivalue _, Rvalue _ -> 
+          (Error (complaint loc "Type mismatch: int and float"), mem2)
+    
+      | _, Rvalue _, Ivalue _ -> 
+          (Error (complaint loc "Type mismatch: float and int"), mem2)
+      
+      | _, _, _ -> (Error (complaint loc ("Unrecognized operation: " ^ op)), mem2)
+    
 
 (*******************************************************************
     Testing
- *******************************************************************)
+*******************************************************************)
 
 let sum_ave_prog =
 "   read int a read int b int sum := a + b
@@ -1033,7 +1223,6 @@ let show_ast prog = pp_p (ast_ize_prog (parse ecg_parse_table prog));;
 
 let main () =
 
-(*
   print_string (interpret sum_ave_syntax_tree "4 6");
     (* should print "10 5" *)
   print_newline ();
@@ -1052,12 +1241,12 @@ let main () =
   print_string (ecg_run "read int a read int b" "3");
     (* should print " line 1, col 21: unexpected end of input" *)
   print_newline ();
-*)
+
 
 (* Code below expects there to be a single command-line argument, which
-   names a file containing an ecg program.  It runs that program, taking
-   input from stdin.  It does NOT run interactively: it sucks up _all_
-   input and runs only once it reaches end-of-file. *)
+  names a file containing an ecg program.  It runs that program, taking
+  input from stdin.  It does NOT run interactively: it sucks up _all_
+  input and runs only once it reaches end-of-file. *)
 
   let read_prog () =
     if Array.length Sys.argv != 2
