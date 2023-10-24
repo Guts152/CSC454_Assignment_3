@@ -958,7 +958,17 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
       (*
         NOTICE: your code should replace the following line.
       *)
-      (Good, mem, inp, outp)
+      let (rhs_value, new_mem) = interpret_expr rhs mem in
+      match rhs_value, old_v with
+      | Ivalue _, Rvalue _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign a real value to an integer variable."])
+      | Rvalue _, Ivalue _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign an integer value to a real variable."])
+      | Error(s), _ -> 
+          (Bad, mem, inp, outp @ [complaint aloc s])  (* Error occurred during RHS expression evaluation *)
+      | _, _ ->  (* No type mismatch or errors in evaluating the RHS expression *)
+          let updated_mem = update_mem lhs rhs_value mem in
+          (Good, updated_mem, inp, outp)
 
 and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
                 (inp:string list) (outp:string list)
@@ -991,7 +1001,93 @@ and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
   (*
     NOTICE: your code should replace the following line.
   *)
-  (Error("code not written yet"), mem)
+
+
+
+  match expr with
+  | AST_int (str, loc) ->
+    (try 
+      (Ivalue (int_of_string str), mem)
+    with
+    | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
+
+  | AST_real (str, loc) ->
+  (try 
+    (Rvalue (float_of_string str), mem)
+  with
+  | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
+
+  | AST_id(id, loc) ->
+    (match lookup_mem id loc mem with
+     | Error _ as err -> (err, mem)  (* Id not found in memory *)
+     | value -> (value, mem)  (* Found the id in memory *)
+    )
+
+  | AST_float (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Ivalue int_val -> (Rvalue (float_of_int int_val), m)  
+    | Rvalue _ -> (Error (complaint loc "Non-integer provided to float"), m) (* Error if already float *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_trunc (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Rvalue float_val -> (Ivalue (int_of_float float_val), m)
+    | Ivalue _ -> (Error (complaint loc "Non-real provided to trunc"), m) (* Error if already integer *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_binop (binop, e1, e2, loc) ->
+    let (v1, m1) = interpret_expr e1 mem in
+    let (v2, m2) = interpret_expr e2 m1 in
+    match (v1, v2) with
+    | (Ivalue i1, Ivalue i2) ->
+      begin
+        match binop with
+        | "+" -> (Ivalue (i1 + i2), m2)
+        | "-" -> (Ivalue (i1 - i2), m2)
+        | "*" -> (Ivalue (i1 * i2), m2)
+        | "/" -> if i2 != 0 then (Ivalue (i1 / i2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r1, Rvalue r2) ->  (* Both operands are real numbers *)
+      begin
+        match binop with
+        | "+" -> (Rvalue (r1 +. r2), m2)
+        | "-" -> (Rvalue (r1 -. r2), m2)
+        | "*" -> (Rvalue (r1 *. r2), m2)
+        | "/" -> if r2 != 0. then (Rvalue (r1 /. r2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Ivalue i, Rvalue r) ->  (* First operand is an integer, second is real *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (ri +. r), m2)
+        | "-" -> (Rvalue (ri -. r), m2)
+        | "*" -> (Rvalue (ri *. r), m2)
+        | "/" -> if r != 0. then (Rvalue (ri /. r), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r, Ivalue i) ->  (* First operand is real, second is integer *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (r +. ri), m2)
+        | "-" -> (Rvalue (r -. ri), m2)
+        | "*" -> (Rvalue (r *. ri), m2)
+        | "/" -> if ri != 0. then (Rvalue (r /. ri), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (_, _) -> 
+      (Error (complaint loc "Type mismatch in binary operation"), m2)
+
 
 and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) (mem:memory)
     : value * memory =
@@ -1093,7 +1189,7 @@ let show_ast prog = pp_p (ast_ize_prog (parse ecg_parse_table prog));;
 
 let main () =
 
-(*
+
   print_string (interpret sum_ave_syntax_tree "4 6");
     (* should print "10 5" *)
   print_newline ();
@@ -1112,7 +1208,7 @@ let main () =
   print_string (ecg_run "read int a read int b" "3");
     (* should print " line 1, col 21: unexpected end of input" *)
   print_newline ();
-*)
+
 
 (* Code below expects there to be a single command-line argument, which
   names a file containing an ecg program.  It runs that program, taking
