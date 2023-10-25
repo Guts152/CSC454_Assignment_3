@@ -642,7 +642,7 @@ and ast_ize_stmt_list (sl:parse_tree) : ast_sl =
   | _ -> [AST_error]
   *)
 
-and ast_ize_stmt (s:parse_tree) : ast_sl =
+  and ast_ize_stmt (s:parse_tree) : ast_sl =
   match s with
   | PT_nt("S", _, [PT_id(lhs, vloc); PT_term(":=", aloc); expr])
       -> [AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
@@ -698,7 +698,9 @@ and ast_ize_expr_tail (lo:ast_e) (tail:parse_tree) : ast_e =   (* TT or FT *)
 
 and ast_ize_cond (c:parse_tree) : ast_c =
   match c with
-  (* NOTICE: your code here *)
+  (*
+    NOTICE: your code here
+  *)
   | PT_nt("C", _, [left; PT_nt("RO", _, [PT_term(op, op_loc)]); right]) -> (op, ast_ize_expr left, ast_ize_expr right, op_loc)
   | _ -> raise (Failure "malformed parse tree in ast_ize_cond")
 ;;
@@ -785,6 +787,18 @@ let rec lookup_mem (id:string) (loc:row_col) (mem:memory) : value =
       | Some (_, v) -> v
       | None -> lookup_mem id loc surround;;
 
+let rec show_mem (mem:memory) : unit =
+  let rec helper mem depth = 
+    match mem with
+    | [] -> ()
+    | scope :: surround ->
+        Printf.printf "Scope level %d:\n" depth;
+        List.iter (fun (id, _) -> Printf.printf "  Variable: %s\n" id) scope;
+        helper surround (depth + 1)
+  in
+  helper mem 1
+  
+
 let insert_mem (id:string) (v:value) (mem:memory) : (memory * bool) =
   match mem with
   | [] -> raise (Failure "unexpected case")
@@ -803,8 +817,6 @@ let rec update_mem (id:string) (v:value) (mem:memory) : memory =
       | Some _ -> ((id, v) :: (filter (fun (sym, _) -> id <> sym) scope))
                   :: surround
       | None   -> scope :: (update_mem id v surround);;
-    
-      
 
 type status =
 | Good
@@ -836,7 +848,7 @@ and interpret_sl (loop_count:int) (iter1:bool) (sl:ast_sl) (mem:memory)
       let (status, new_mem, new_inp, new_outp) = interpret_s loop_count iter1 s mem inp outp in
       match status with
       | Good -> interpret_sl loop_count iter1 tl new_mem new_inp new_outp
-      | Done -> (Done, mem, new_inp, new_outp)
+      | Done -> (Done, new_mem, new_inp, new_outp)
       | Bad -> (Bad, new_mem, new_inp, new_outp)
   
 
@@ -847,7 +859,10 @@ and interpret_s (loop_count:int) (iter1:bool) (s:ast_s) (mem:memory)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   match s with
-  | AST_i_dec(id, vloc)  -> interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
+  | AST_i_dec(id, vloc)  -> 
+  (* let () = Printf.printf "Entered interpret_dec with iter1 = %b\n" iter1 in *)
+  interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
+  
   | AST_r_dec(id, vloc)  -> interpret_dec iter1 id (Rvalue(0.0)) vloc mem inp outp
   | AST_read(id, loc)                -> interpret_read id loc mem inp outp
   | AST_write(expr)                  -> interpret_write expr mem inp outp
@@ -863,26 +878,32 @@ and interpret_s (loop_count:int) (iter1:bool) (s:ast_s) (mem:memory)
 and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
                   (mem:memory) (inp:string list) (outp:string list)
     : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
+
   match lookup_mem id vloc mem with
   | Error _ when iter1 -> 
-    (* variable not declared and it's the first iteration of a new scope, insert it into memory*)
+    (* variable not declared and it's the first iteration of a new scope, insert it into memory *)
+    (* print_endline "1111111111111111"; *)
+    (* show_mem mem; *)
+
     let (new_mem, inserted) = insert_mem id v mem in
     if inserted then
-      (Good, new_mem, inp, outp)
+    (print_endline "insert match 1 ~~~~~~~~~~~~~~~~~~~~~~~~";
+      show_mem new_mem;
+      (Good, new_mem, inp, outp))(* verified execution during declaire *)
     else
       (* This case shouldn't occur since we check lookup_mem before, just for convenient of debugging *)
       raise (Failure (id ^ " unexpected case during insertion"))
   | Error _ ->
     (* variable not declared but we are not in the first iteration of a new scope, update the memory *)
+    (* print_endline "2222222222222"; *)
+    (print_endline "update match 2 ~~~~~~~~~~~~~~~~~~~~";
+    show_mem mem;
     let new_mem = update_mem id v mem in
-    (Good, new_mem, inp, outp)
+      (print_endline "dec  update";
+    (Good, new_mem, inp, outp)))
   | _ ->
     (* variable already declared *)
-    (Bad, mem, inp, outp @ [complaint vloc "variable already declared in this scope"])
+    (Bad, mem, inp, outp @ [complaint vloc "variable already declared in this scope"]) 
 
 
 and interpret_read (id:string) (loc:row_col) (mem:memory)
@@ -894,52 +915,46 @@ and interpret_read (id:string) (loc:row_col) (mem:memory)
   | Error _ ->
     (* if the variable is not declared, return an error *)
     (Bad, mem, inp, outp @ [complaint loc "variable not declared"])
-  | _ ->
-    (* if is declared, continue to check the input value *)
+
+
+  | Rvalue _ ->
+    (match inp with
+    | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
+    | str :: rest ->
+      match String.contains str '.' with
+      | false -> 
+        (Bad, mem, rest, outp @ [complaint loc "read unknown type when real is expected"])
+      | true ->
+        let r = try Some(float_of_string str) with Failure _ -> None in
+        match r with 
+        | Some value ->
+          (* success, update the memory value*)
+          let new_mem = update_mem id (Rvalue value) mem in
+          (Good, new_mem, rest, outp)
+        | None -> 
+          (* fail, return error *)
+          (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"]))
+      
+  | Ivalue _ ->
     match inp with
     | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
     | str :: rest ->
-        if String.contains str '.'
-          then
-            (*
-              NOTICE: your code should replace the following line.
-            *)
-            match old_v with
-            | Rvalue _ ->
-              (* try to convert the string to a float value *)
-              let r = try Some(float_of_string str) with Failure _ -> None in
-              begin
-                match r with 
-                | Some value ->
-                  (* success, update the memory value*)
-                  let new_mem = update_mem id (Rvalue value) mem in
-                  (Good, new_mem, rest, outp)
-                | None -> 
-                  (* fail, return error *)
-                  (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
-              end
-            | _ ->
-              (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
-          else
-            (*
-              NOTICE: your code should replace the following line.
-            *)
-            match old_v with
-            | Ivalue _ ->
-                (* try to convert the string to a integer value *)
-                let i = try Some(int_of_string str) with Failure _ -> None in
-                begin
-                  match i with 
-                  | Some value ->
-                    (* success, update the memory value*)
-                    let new_mem = update_mem id (Ivalue value) mem in
-                    (Good, new_mem, rest, outp)
-                  | None -> 
-                    (* fail, return error *)
-                    (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
-                end
-              | _ ->
-                (Bad, mem, rest, outp @ [complaint loc "read read when int is expected"])
+    if String.contains str '.'
+    then
+      match old_v with
+      | _ ->
+        (Bad, mem, rest, outp @ [complaint loc "read real when int is expected"])
+    else
+      let i = try Some(int_of_string str) with Failure _ -> None in
+      match i with 
+      | Some value ->
+        (* success, update the memory value*)
+        let new_mem = update_mem id (Ivalue value) mem in
+        (Good, new_mem, rest, outp)
+      | None -> 
+        (* fail, return error *)
+        (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+
 
 (* NB: the following routine is complete. *)
 and interpret_write (expr:ast_e) (mem:memory)
@@ -965,46 +980,61 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
       let (rhs_value, new_mem) = interpret_expr rhs mem in
       match rhs_value, old_v with
       | Ivalue _, Rvalue _ -> 
-          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign a real value to an integer variable."])
+          (Bad, new_mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign a real value to an integer variable."])
       | Rvalue _, Ivalue _ -> 
-          (Bad, mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign an integer value to a real variable."])
+          (Bad, new_mem, inp, outp @ [complaint aloc "Type mismatch: trying to assign an integer value to a real variable."])
       | Error(s), _ -> 
-          (Bad, mem, inp, outp @ [complaint aloc s])  (* Error occurred during RHS expression evaluation *)
+          (Bad, new_mem, inp, outp @ [complaint aloc s])  (* Error occurred during RHS expression evaluation *)
       | _, _ ->  (* No type mismatch or errors in evaluating the RHS expression *)
-          let updated_mem = update_mem lhs rhs_value mem in
+          (print_endline "before assignment~~~~~~~~~~~~~~~~~~~~~";
+            show_mem mem;
+            print_endline "before update";
+          let updated_mem = update_mem lhs rhs_value new_mem in
           (Good, updated_mem, inp, outp)
+          )
 
 and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
-          (inp:string list) (outp:string list)
-        : status * memory * string list * string list =
-        match interpret_cond cond mem with
-        | (Bvalue(true), new_mem) -> interpret_sl loop_count true sl new_mem inp outp
-        | (Bvalue(false), new_mem) -> (Good, new_mem, inp, outp)
-        | _ -> raise (Failure "Condition did not evaluate to a boolean value")
+                  (inp:string list) (outp:string list)
+    : status * memory * string list * string list =
+  match interpret_cond cond mem with
+  | (Bvalue(true), new_mem) -> interpret_sl loop_count true sl new_mem inp outp
+  | (Bvalue(false), new_mem) -> (Good, new_mem, inp, outp)
+  | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
 and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
-  interpret_do_helper loop_count sl sl mem inp outp
+  let (status, new_mem, new_inp, new_outp) = interpret_sl (loop_count+1) true sl (new_scope mem) inp outp in
+  match status with
+  | Done -> (print_endline "end scope ~~~~~~~~~~~~~~~~~~~~~";(Good, (end_scope new_mem), new_inp, new_outp))
+  | Good -> ( interpret_do_helper loop_count true sl new_mem inp new_outp)
+  | Bad -> (Bad, new_mem, new_inp, outp)
 
-and interpret_do_helper loop_count remaining_sl original_sl mem inp outp =
-    match interpret_sl (loop_count+1) false remaining_sl mem inp outp with
-    | (Done, _, _, _) -> (Done, mem, inp, outp) (* Loop exits if Done is encountered *)
-    | (Bad, new_mem, new_inp, new_outp) -> (Bad, new_mem, new_inp, new_outp) (* Error handling *)
-    | (Good, new_mem, new_inp, new_outp) ->
-        interpret_do_helper loop_count original_sl original_sl new_mem new_inp new_outp
-
+and interpret_do_helper (loop_count:int) (iter:bool) (sl:ast_sl) (mem:memory)
+(inp:string list) (outp:string list) : status * memory * string list * string list =
+print_endline "helper function";
+let (status, new_mem, new_inp, new_outp) = interpret_sl (loop_count+1) false sl mem inp outp in 
+    match status with
+    | Done ->
+    (print_endline "helper done end scope ~~~~~~~~~~~~~~~~~~~~~";
+     (* (Done, (end_scope new_mem), new_inp, new_outp) *)
+    (Good, (end_scope mem), new_inp, new_outp))
+    (* Loop exits if Done is encountered *)
+    | Bad -> (print_endline "helper Bad";(Bad, new_mem, new_inp, new_outp)) (* Error handling *)
+    | Good ->
+    (print_endline "helper Good !!!!";
+        interpret_do_helper loop_count false sl  new_mem new_inp new_outp)
 
 and interpret_check (cond:ast_c) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
   match interpret_cond cond mem with
   | (Bvalue(true), new_mem) -> (Good, new_mem, inp, outp)
-  | (Bvalue(false), new_mem) -> (Done, new_mem, inp, outp @ ["Check failed!"])
+  | (Bvalue(false), new_mem) -> (Done, new_mem, inp, outp)
   | _ -> raise (Failure "Condition did not evaluate to a boolean value")
-
   
 and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
+  (* NOTICE: your code should replace the following line. *)
   match expr with
   | AST_int (str, loc) ->
     (try 
@@ -1090,114 +1120,146 @@ and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
       (Error (complaint loc "Type mismatch in binary operation"), m2)
 
 
+
 and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) mem =
-      (* Evaluate left and right operands *)
-      let (lval, mem1) = interpret_expr lo mem in
-      let (rval, mem2) = interpret_expr ro mem1 in
-  
-      match op, lval, rval with
-      | "==", Ivalue li, Ivalue ri -> (Bvalue (li = ri), mem2)
-      | "==", Rvalue lf, Rvalue rf -> (Bvalue (lf = rf), mem2)
-        
-      | "!=", Ivalue li, Ivalue ri -> (Bvalue (li <> ri), mem2)
-      | "!=", Rvalue lf, Rvalue rf -> (Bvalue (lf <> rf), mem2)
-  
-      | "<", Ivalue li, Ivalue ri -> (Bvalue (li < ri), mem2)
-      | "<", Rvalue lf, Rvalue rf -> (Bvalue (lf < rf), mem2)
-  
-      | ">", Ivalue li, Ivalue ri -> (Bvalue (li > ri), mem2)
-      | ">", Rvalue lf, Rvalue rf -> (Bvalue (lf > rf), mem2)
-  
-      | ">=", Ivalue li, Ivalue ri -> (Bvalue (li >= ri), mem2)
-      | ">=", Rvalue lf, Rvalue rf -> (Bvalue (lf >= rf), mem2)
-  
-      | "<=", Ivalue li, Ivalue ri -> (Bvalue (li <= ri), mem2)
-      | "<=", Rvalue lf, Rvalue rf -> (Bvalue (lf <= rf), mem2)
-  
-      | _, Error e, _ -> (Error e, mem2)
-      | _, _, Error e -> (Error e, mem2)
-  
-      | _, Ivalue _, Rvalue _ -> 
-          (Error (complaint loc "Type mismatch: int and float"), mem2)
-  
-      | _, Rvalue _, Ivalue _ -> 
-          (Error (complaint loc "Type mismatch: float and int"), mem2)
-  
-      | _, _, _ -> (Error (complaint loc ("Unrecognized operation: " ^ op)), mem2)
-  
+(* Evaluate left and right operands *)
+  let (lval, mem1) = interpret_expr lo mem in
+  let (rval, mem2) = interpret_expr ro mem1 in
+  (* print_endline "Entering the cond function..."; *)
+  (* let () = Printf.printf "op is %s\n " op in *)
+
+
+  match op, lval, rval with
+  | "==", Ivalue li, Ivalue ri ->   
+  (Bvalue (li = ri), mem2)
+  | "==", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf = rf), mem2)
+    
+  | "!=", Ivalue li, Ivalue ri ->   
+  (Bvalue (li <> ri), mem2)
+  | "!=", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf <> rf), mem2)
+
+  | "<", Ivalue li, Ivalue ri ->   
+  (Bvalue (li < ri), mem2)
+  | "<", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf < rf), mem2)
+
+  | ">", Ivalue li, Ivalue ri ->   
+  (Bvalue (li > ri), mem2)
+  | ">", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf > rf), mem2)
+
+  | ">=", Ivalue li, Ivalue ri ->   
+  (Bvalue (li >= ri), mem2)
+  | ">=", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf >= rf), mem2)
+
+  | "<=", Ivalue li, Ivalue ri ->   
+  (Bvalue (li <= ri), mem2)
+  | "<=", Rvalue lf, Rvalue rf ->   
+  (Bvalue (lf <= rf), mem2)
+
+  | _, Error e, _ -> (Error e, mem2) (*e*)
+  | _, _, Error e -> (Error e, mem2)
+
+  | _, Ivalue _, Rvalue _ -> 
+      (Error (complaint loc "Type mismatch: int and float"), mem2)
+
+  | _, Rvalue _, Ivalue _ -> 
+      (Error (complaint loc "Type mismatch: float and int"), mem2)
+
+  | _, _, _ -> (Error (complaint loc ("Unrecognized operation: " ^ op)), mem2)
 (*******************************************************************
     Testing
 *******************************************************************)
 
+
 let sum_ave_prog =
-"   read int a read int b int sum := a + b
-    write sum write float(sum) / 2.0";;
+  "   read int a read int b int sum := a + b
+      write sum write float(sum) / 2.0";;
+  
+  let primes_prog =
+  "   read int n
+      int cp := 2
+      do 
+          check n > 0
+          int found := 0
+          int cf1 := 2
+          int cf1s := cf1 * cf1
+          do
+              check cf1s <= cp
+              int cf2 := 2
+              int pr := cf1 * cf2
+              do
+                  check pr <= cp
+                  if pr == cp
+                      found := 1
+                  fi
+                  cf2 := cf2 + 1
+                  pr := cf1 * cf2
+              od
+              cf1 := cf1 + 1
+              cf1s := cf1 * cf1
+          od
+          if found == 0
+              write cp
+              n := n - 1
+          fi
+          cp := cp + 1
+      od";;
+  
+  let gcd_prog =
+  "   read int a
+      read int b
+      do 
+          check a != b
+          if a > b
+              a := a - b
+          fi
+          if b > a
+              b := b - a
+          fi
+          if a == b
+              write a
+          fi
+      od";;
+  
+  let sqrt_prog =
+  "   read real d
+      real l := d / 2.0
+      do
+          check l * l > d
+          l := l / 2.0
+      od
+      real h := 2.0 * l
+      real err := d - (l * l)
+      if err < 0.0 err := 0.0 - err fi
+      do
+          check err > 1.e-10
+          real a := (l + h) / 2.0
+          if (a * a) < d l := a fi
+          if (a * a) > d h := a fi
+          err := d - (l * l)
+          if err < 0.0 err := 0.0 - err fi
+      od
+      write l";;
+  
+    
 
-let primes_prog =
-"   read int n
-    int cp := 2
-    do 
-        check n > 0
-        int found := 0
-        int cf1 := 2
-        int cf1s := cf1 * cf1
-        do
-            check cf1s <= cp
-            int cf2 := 2
-            int pr := cf1 * cf2
-            do
-                check pr <= cp
-                if pr == cp
-                    found := 1
-                fi
-                cf2 := cf2 + 1
-                pr := cf1 * cf2
-            od
-            cf1 := cf1 + 1
-            cf1s := cf1 * cf1
-        od
-        if found == 0
-            write cp
-            n := n - 1
-        fi
-        cp := cp + 1
-    od";;
+    let float_prog = "
+    int c := 2
+    real d := float(c)
+    write d
+    real e := float(d)
+    "
 
-let gcd_prog =
-"   read int a
-    read int b
-    do 
-        check a != b
-        if a > b
-            a := a - b
-        fi
-        if b > a
-            b := b - a
-        fi
-        if a == b
-            write a
-        fi
-    od";;
-
-let sqrt_prog =
-"   read real d
-    real l := d / 2.0
-    do
-        check l * l > d
-        l := l / 2.0
-    od
-    real h := 2.0 * l
-    real err := d - (l * l)
-    if err < 0.0 err := 0.0 - err fi
-    do
-        check err > 1.e-10
-        real a := (l + h) / 2.0
-        if (a * a) < d l := a fi
-        if (a * a) > d h := a fi
-        err := d - (l * l)
-        if err < 0.0 err := 0.0 - err fi
-    od
-    write l";;
+    let trunc_prog = "
+    real c := 2
+    int d := trunc(c)
+    write d
+    int e := trunc(d)
+    "
 
 let ecg_ast prog =
   ast_ize_prog (parse ecg_parse_table prog);;
@@ -1214,10 +1276,22 @@ let primes_syntax_tree = ast_ize_prog primes_parse_tree;;
 let gcd_parse_tree = parse ecg_parse_table gcd_prog;;
 let gcd_syntax_tree = ast_ize_prog gcd_parse_tree;;
 
+let sqrt_prog_parse_tree = parse ecg_parse_table sqrt_prog;;
+let sqrt_prog_syntax_tree = ast_ize_prog sqrt_prog_parse_tree;;
+
+let float_parse_tree = parse ecg_parse_table float_prog;;
+let float_syntax_tree = ast_ize_prog float_parse_tree;;
+
+let trunc_parse_tree = parse ecg_parse_table float_prog;;
+let trunc_syntax_tree = ast_ize_prog trunc_parse_tree;;
+
+
 let show_ast prog = pp_p (ast_ize_prog (parse ecg_parse_table prog));;
 
-let main () =
 
+let main () =
+  
+  print_endline "Entering the main function...";
   print_string (interpret sum_ave_syntax_tree "4 6");
     (* should print "10 5" *)
   print_newline ();
@@ -1236,7 +1310,18 @@ let main () =
   print_string (ecg_run "read int a read int b" "3");
     (* should print " line 1, col 21: unexpected end of input" *)
   print_newline ();
-
+  print_string (interpret sqrt_prog_syntax_tree "36.0");
+    (* should print "5.99999999" *)
+  print_newline ();
+  print_string (interpret gcd_syntax_tree "10 15");
+    (* should print "5" *)
+  print_newline ();
+  print_string (interpret float_syntax_tree "");
+    (* should print "line 4, col 12:  line 0, col 0: Non-integer provided to float" *)
+  print_newline ();
+  print_string (interpret trunc_syntax_tree "");
+  (* should print "line 4, col 12:  line 0, col 0: Non-integer provided to float" *)
+  print_newline ();
 
 (* Code below expects there to be a single command-line argument, which
   names a file containing an ecg program.  It runs that program, taking
