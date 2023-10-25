@@ -690,7 +690,7 @@ and ast_ize_expr_tail (lo:ast_e) (tail:parse_tree) : ast_e =   (* TT or FT *)
   match tail with
   (* NOTICE: your code here *)
   | PT_nt("TT", _, [PT_nt("AO", _, [PT_term(op, op_loc)]); t; tt]) -> AST_binop(op, lo, ast_ize_expr t, op_loc)
-  | PT_nt("FT", _, [PT_nt("FO", _, [PT_term(op, op_loc)]); f; ft]) -> AST_binop(op, lo, ast_ize_expr f, op_loc)
+  | PT_nt("FT", _, [PT_nt("MO", _, [PT_term(op, op_loc)]); f; ft]) -> AST_binop(op, lo, ast_ize_expr f, op_loc)
   | _ -> lo
 
 and ast_ize_cond (c:parse_tree) : ast_c =
@@ -843,7 +843,10 @@ and interpret_s (loop_count:int) (iter1:bool) (s:ast_s) (mem:memory)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   match s with
-  | AST_i_dec(id, vloc)  -> interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
+  | AST_i_dec(id, vloc)  -> 
+  (* let () = Printf.printf "Entered interpret_dec with iter1 = %b\n" iter1 in *)
+  interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
+  
   | AST_r_dec(id, vloc)  -> interpret_dec iter1 id (Rvalue(0.0)) vloc mem inp outp
   | AST_read(id, loc)                -> interpret_read id loc mem inp outp
   | AST_write(expr)                  -> interpret_write expr mem inp outp
@@ -863,9 +866,17 @@ and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
   (*
     NOTICE: your code should replace the following line.
   *)
+  (* Check if iter1 is true
+
+  if not iter1 then raise (Failure "iter1 is expected to be true, but it's not.");
+  if iter1 then raise (Failure "iter1 is expected to be false, but it's not."); *)
+
+   
   match lookup_mem id vloc mem with
   | Error _ when iter1 -> 
-    (* variable not declared and it's the first iteration of a new scope, insert it into memory*)
+    let () = Printf.printf "=========enter first entry=========\n"  in
+
+    (* variable not declared and it's the first iteration of a new scope, insert it into memory *)
     let (new_mem, inserted) = insert_mem id v mem in
     if inserted then
       (Good, new_mem, inp, outp)
@@ -892,50 +903,53 @@ and interpret_read (id:string) (loc:row_col) (mem:memory)
     (Bad, mem, inp, outp @ [complaint loc "variable not declared"])
   | _ ->
     (* if is declared, continue to check the input value *)
-    match inp with
-    | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
-    | str :: rest ->
-        if String.contains str '.'
-          then
-            (*
-              NOTICE: your code should replace the following line.
-            *)
-            match old_v with
-            | Rvalue _ ->
-              (* try to convert the string to a float value *)
-              let r = try Some(float_of_string str) with Failure _ -> None in
+  match inp with
+  | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
+  | str :: rest ->
+      if String.contains str '.'
+        then
+          (*
+            NOTICE: your code should replace the following line.
+          *)
+          match old_v with
+          | Rvalue _ ->
+            (* try to convert the string to a float value *)
+            let r = try Some(float_of_string str) with Failure _ -> None in
+            begin
+              match r with 
+              | Some value ->
+                (* success, update the memory value*)
+                let new_mem = update_mem id (Rvalue value) mem in
+                (Good, new_mem, rest, outp)
+              | None -> 
+                (* fail, return error *)
+                (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+            end
+          | _ ->
+            (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
+        else
+          let () = Printf.printf "String is %s\n" str in
+          (*
+            NOTICE: your code should replace the following line.
+          *)
+          match old_v with
+          | Error _ ->
+          (Bad, mem, rest, outp @ [complaint loc "11111111111111111111111111"])
+          | Ivalue _ ->
+              (* try to convert the string to a integer value *)
+              let i = try Some(int_of_string str) with Failure _ -> None in
               begin
-                match r with 
+                match i with 
                 | Some value ->
                   (* success, update the memory value*)
-                  let new_mem = update_mem id (Rvalue value) mem in
+                  let new_mem = update_mem id (Ivalue value) mem in
                   (Good, new_mem, rest, outp)
                 | None -> 
                   (* fail, return error *)
                   (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
               end
-            | _ ->
-              (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
-          else
-            (*
-              NOTICE: your code should replace the following line.
-            *)
-            match old_v with
-            | Ivalue _ ->
-                (* try to convert the string to a integer value *)
-                let i = try Some(int_of_string str) with Failure _ -> None in
-                begin
-                  match i with 
-                  | Some value ->
-                    (* success, update the memory value*)
-                    let new_mem = update_mem id (Ivalue value) mem in
-                    (Good, new_mem, rest, outp)
-                  | None -> 
-                    (* fail, return error *)
-                    (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
-                end
-              | _ ->
-                (Bad, mem, rest, outp @ [complaint loc "read read when int is expected"])
+          | _ ->
+            (Bad, mem, rest, outp @ [complaint loc "read real when int is expected"])
 
 (* NB: the following routine is complete. *)
 and interpret_write (expr:ast_e) (mem:memory)
@@ -1001,9 +1015,6 @@ and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
   (*
     NOTICE: your code should replace the following line.
   *)
-
-
-
   match expr with
   | AST_int (str, loc) ->
     (try 
@@ -1089,16 +1100,48 @@ and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
       (Error (complaint loc "Type mismatch in binary operation"), m2)
 
 
+
 and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) (mem:memory)
     : value * memory =
   (*
     NOTICE: your code should replace the following line.
   *)
-  (Error("code not written yet"), mem)
+  let get_bool num = if num then 1 else 0 in
 
+  let (lval, mem1) = interpret_expr lo mem in
+  let (rval, mem2) = interpret_expr ro mem1 in
+  match lval, rval with
+  | Ivalue l, Ivalue r -> 
+      let result = match op with
+      | "<" -> l < r
+      | "<=" -> l <= r
+      | ">" -> l > r
+      | ">=" -> l >= r
+      | "==" -> l = r
+      | "!=" -> l <> r
+      | _ -> raise (Failure ("Unsupported operation: " ^ op))
+      in
+      (Ivalue (get_bool result), mem2)
+  
+  | Rvalue l, Rvalue r -> 
+      let result = match op with
+      | "<" -> l < r
+      | "<=" -> l <= r
+      | ">" -> l > r
+      | ">=" -> l >= r
+      | "==" -> l = r
+      | "!=" -> l <> r
+      | _ -> raise (Failure ("Unsupported operation: " ^ op))
+      in
+      (Ivalue (get_bool result), mem2)
+  
+  | _, _ -> (Error (complaint loc "Type mismatch in condition expression"), mem2)
 (*******************************************************************
     Testing
 *******************************************************************)
+
+let dec_test = 
+"int cp := 2";;
 
 let sum_ave_prog =
 "   read int a read int b int sum := a + b
@@ -1185,11 +1228,15 @@ let primes_syntax_tree = ast_ize_prog primes_parse_tree;;
 let gcd_parse_tree = parse ecg_parse_table gcd_prog;;
 let gcd_syntax_tree = ast_ize_prog gcd_parse_tree;;
 
+let dec_test_parse_tree = parse ecg_parse_table dec_test;;
+let dec_test_syntax_tree = ast_ize_prog dec_test_parse_tree;;
+
 let show_ast prog = pp_p (ast_ize_prog (parse ecg_parse_table prog));;
 
+
 let main () =
-
-
+  
+  print_endline "Entering the main function...";
   print_string (interpret sum_ave_syntax_tree "4 6");
     (* should print "10 5" *)
   print_newline ();
