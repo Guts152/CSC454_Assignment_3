@@ -757,6 +757,7 @@ let pp_p (sl:ast_sl) = print_string ("[ " ^ (pp_sl sl "  ") ^ "\n]\n");;
 type value =
 | Ivalue of int
 | Rvalue of float
+| Bvalue of bool
 | Error of string;;
 
 type 'a stack = 'a list;;
@@ -801,6 +802,8 @@ let rec update_mem (id:string) (v:value) (mem:memory) : memory =
       | Some _ -> ((id, v) :: (filter (fun (sym, _) -> id <> sym) scope))
                   :: surround
       | None   -> scope :: (update_mem id v surround);;
+    
+      
 
 type status =
 | Good
@@ -843,10 +846,7 @@ and interpret_s (loop_count:int) (iter1:bool) (s:ast_s) (mem:memory)
     : status * memory * string list * string list =
     (*  ok?    new_mem  new_input     new_output *)
   match s with
-  | AST_i_dec(id, vloc)  -> 
-  (* let () = Printf.printf "Entered interpret_dec with iter1 = %b\n" iter1 in *)
-  interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
-  
+  | AST_i_dec(id, vloc)  -> interpret_dec iter1 id (Ivalue(0)) vloc mem inp outp
   | AST_r_dec(id, vloc)  -> interpret_dec iter1 id (Rvalue(0.0)) vloc mem inp outp
   | AST_read(id, loc)                -> interpret_read id loc mem inp outp
   | AST_write(expr)                  -> interpret_write expr mem inp outp
@@ -866,17 +866,9 @@ and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
   (*
     NOTICE: your code should replace the following line.
   *)
-  (* Check if iter1 is true
-
-  if not iter1 then raise (Failure "iter1 is expected to be true, but it's not.");
-  if iter1 then raise (Failure "iter1 is expected to be false, but it's not."); *)
-
-   
   match lookup_mem id vloc mem with
   | Error _ when iter1 -> 
-    let () = Printf.printf "=========enter first entry=========\n"  in
-
-    (* variable not declared and it's the first iteration of a new scope, insert it into memory *)
+    (* variable not declared and it's the first iteration of a new scope, insert it into memory*)
     let (new_mem, inserted) = insert_mem id v mem in
     if inserted then
       (Good, new_mem, inp, outp)
