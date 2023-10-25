@@ -896,53 +896,50 @@ and interpret_read (id:string) (loc:row_col) (mem:memory)
     (Bad, mem, inp, outp @ [complaint loc "variable not declared"])
   | _ ->
     (* if is declared, continue to check the input value *)
-  match inp with
-  | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
-  | str :: rest ->
-      if String.contains str '.'
-        then
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          match old_v with
-          | Rvalue _ ->
-            (* try to convert the string to a float value *)
-            let r = try Some(float_of_string str) with Failure _ -> None in
-            begin
-              match r with 
-              | Some value ->
-                (* success, update the memory value*)
-                let new_mem = update_mem id (Rvalue value) mem in
-                (Good, new_mem, rest, outp)
-              | None -> 
-                (* fail, return error *)
-                (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
-            end
-          | _ ->
-            (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
-        else
-          let () = Printf.printf "String is %s\n" str in
-          (*
-            NOTICE: your code should replace the following line.
-          *)
-          match old_v with
-          | Error _ ->
-          (Bad, mem, rest, outp @ [complaint loc "11111111111111111111111111"])
-          | Ivalue _ ->
-              (* try to convert the string to a integer value *)
-              let i = try Some(int_of_string str) with Failure _ -> None in
+    match inp with
+    | []          -> (Bad, [], [], outp @ [complaint loc "unexpected end of input"])
+    | str :: rest ->
+        if String.contains str '.'
+          then
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Rvalue _ ->
+              (* try to convert the string to a float value *)
+              let r = try Some(float_of_string str) with Failure _ -> None in
               begin
-                match i with 
+                match r with 
                 | Some value ->
                   (* success, update the memory value*)
-                  let new_mem = update_mem id (Ivalue value) mem in
+                  let new_mem = update_mem id (Rvalue value) mem in
                   (Good, new_mem, rest, outp)
                 | None -> 
                   (* fail, return error *)
                   (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
               end
-          | _ ->
-            (Bad, mem, rest, outp @ [complaint loc "read real when int is expected"])
+            | _ ->
+              (Bad, mem, rest, outp @ [complaint loc "read int when real is expected"])
+          else
+            (*
+              NOTICE: your code should replace the following line.
+            *)
+            match old_v with
+            | Ivalue _ ->
+                (* try to convert the string to a integer value *)
+                let i = try Some(int_of_string str) with Failure _ -> None in
+                begin
+                  match i with 
+                  | Some value ->
+                    (* success, update the memory value*)
+                    let new_mem = update_mem id (Ivalue value) mem in
+                    (Good, new_mem, rest, outp)
+                  | None -> 
+                    (* fail, return error *)
+                    (Bad, mem, rest, outp @ [complaint loc "Non-numeric input"])
+                end
+              | _ ->
+                (Bad, mem, rest, outp @ [complaint loc "read read when int is expected"])
 
 (* NB: the following routine is complete. *)
 and interpret_write (expr:ast_e) (mem:memory)
@@ -1007,7 +1004,126 @@ and interpret_check (cond:ast_c) (mem:memory)
   | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
   
+and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
+  match expr with
+  | AST_int (str, loc) ->
+    (try 
+      (Ivalue (int_of_string str), mem)
+    with
+    | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
 
+  | AST_real (str, loc) ->
+  (try 
+    (Rvalue (float_of_string str), mem)
+  with
+  | Failure _ -> (Error (complaint loc "non-numeric input"), mem))
+
+  | AST_id(id, loc) ->
+    (match lookup_mem id loc mem with
+     | Error _ as err -> (err, mem)  (* Id not found in memory *)
+     | value -> (value, mem)  (* Found the id in memory *)
+    )
+
+  | AST_float (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Ivalue int_val -> (Rvalue (float_of_int int_val), m)  
+    | Rvalue _ -> (Error (complaint loc "Non-integer provided to float"), m) (* Error if already float *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_trunc (e, loc) ->
+    let (v, m) = interpret_expr e mem in
+    (match v with
+    | Rvalue float_val -> (Ivalue (int_of_float float_val), m)
+    | Ivalue _ -> (Error (complaint loc "Non-real provided to trunc"), m) (* Error if already integer *)
+    | Error str -> (Error str, m)  
+    )
+
+  | AST_binop (binop, e1, e2, loc) ->
+    let (v1, m1) = interpret_expr e1 mem in
+    let (v2, m2) = interpret_expr e2 m1 in
+    match (v1, v2) with
+    | (Ivalue i1, Ivalue i2) ->
+      begin
+        match binop with
+        | "+" -> (Ivalue (i1 + i2), m2)
+        | "-" -> (Ivalue (i1 - i2), m2)
+        | "*" -> (Ivalue (i1 * i2), m2)
+        | "/" -> if i2 != 0 then (Ivalue (i1 / i2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r1, Rvalue r2) ->  (* Both operands are real numbers *)
+      begin
+        match binop with
+        | "+" -> (Rvalue (r1 +. r2), m2)
+        | "-" -> (Rvalue (r1 -. r2), m2)
+        | "*" -> (Rvalue (r1 *. r2), m2)
+        | "/" -> if r2 != 0. then (Rvalue (r1 /. r2), m2)
+                 else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Ivalue i, Rvalue r) ->  (* First operand is an integer, second is real *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (ri +. r), m2)
+        | "-" -> (Rvalue (ri -. r), m2)
+        | "*" -> (Rvalue (ri *. r), m2)
+        | "/" -> if r != 0. then (Rvalue (ri /. r), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (Rvalue r, Ivalue i) ->  (* First operand is real, second is integer *)
+      begin
+        let ri = float_of_int i in
+        match binop with
+        | "+" -> (Rvalue (r +. ri), m2)
+        | "-" -> (Rvalue (r -. ri), m2)
+        | "*" -> (Rvalue (r *. ri), m2)
+        | "/" -> if ri != 0. then (Rvalue (r /. ri), m2)
+                else (Error (complaint loc "Division by zero"), m2)
+        | _ -> (Error (complaint loc ("Unknown binary operator " ^ binop)), m2)
+      end
+    | (_, _) -> 
+      (Error (complaint loc "Type mismatch in binary operation"), m2)
+
+
+and interpret_cond ((op:string), (lo:ast_e), (ro:ast_e), (loc:row_col)) mem =
+      (* Evaluate left and right operands *)
+      let (lval, mem1) = interpret_expr lo mem in
+      let (rval, mem2) = interpret_expr ro mem1 in
+  
+      match op, lval, rval with
+      | "==", Ivalue li, Ivalue ri -> (Bvalue (li = ri), mem2)
+      | "==", Rvalue lf, Rvalue rf -> (Bvalue (lf = rf), mem2)
+        
+      | "!=", Ivalue li, Ivalue ri -> (Bvalue (li <> ri), mem2)
+      | "!=", Rvalue lf, Rvalue rf -> (Bvalue (lf <> rf), mem2)
+  
+      | "<", Ivalue li, Ivalue ri -> (Bvalue (li < ri), mem2)
+      | "<", Rvalue lf, Rvalue rf -> (Bvalue (lf < rf), mem2)
+  
+      | ">", Ivalue li, Ivalue ri -> (Bvalue (li > ri), mem2)
+      | ">", Rvalue lf, Rvalue rf -> (Bvalue (lf > rf), mem2)
+  
+      | ">=", Ivalue li, Ivalue ri -> (Bvalue (li >= ri), mem2)
+      | ">=", Rvalue lf, Rvalue rf -> (Bvalue (lf >= rf), mem2)
+  
+      | "<=", Ivalue li, Ivalue ri -> (Bvalue (li <= ri), mem2)
+      | "<=", Rvalue lf, Rvalue rf -> (Bvalue (lf <= rf), mem2)
+  
+      | _, Error e, _ -> (Error e, mem2)
+      | _, _, Error e -> (Error e, mem2)
+  
+      | _, Ivalue _, Rvalue _ -> 
+          (Error (complaint loc "Type mismatch: int and float"), mem2)
+  
+      | _, Rvalue _, Ivalue _ -> 
+          (Error (complaint loc "Type mismatch: float and int"), mem2)
+  
+      | _, _, _ -> (Error (complaint loc ("Unrecognized operation: " ^ op)), mem2)
   
 (*******************************************************************
     Testing
