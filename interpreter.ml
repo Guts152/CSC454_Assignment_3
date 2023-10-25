@@ -978,30 +978,6 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
 
 and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
                 (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
-
-and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
-                (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
-
-and interpret_check (cond:ast_c) (mem:memory)
-                    (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
-    (*  ok?    new_mem  new_input     new_output *)
-  (*
-    NOTICE: your code should replace the following line.
-  *)
-  (Good, mem, inp, outp)
 
 and interpret_expr (expr:ast_e) (mem:memory) : value * memory =
   (*
