@@ -1,10 +1,10 @@
 # CSC454_Assignment_3
-(*This work is done by Liu,Xiaochen and Feng,Ziqi*)
+(*This work is done by Liu, Xiaochen and Feng, Ziqi*)
 
 (*Part 1: translate the parse tree into a syntax tree, by Xiaochen*)
 (*Part 2: walk the syntax tree to determine its behavior on a given input, by Ziqi and Xiaochen*)
 
-Completed all basic requirements, but met issue when trying to declare in do scope. It may caused by wrong management of memory. To continue testing the interpreter, we modified some ecl code to declare variables as global variables.
+Completed all basic requirements, but met issue when trying to declare in "do" scope. It may caused by wrong management of memory. To continue testing the interpreter, we modified some ECL code to declare variables as global variables.
 
 
 Running guide:
