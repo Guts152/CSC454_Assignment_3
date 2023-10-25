@@ -659,8 +659,8 @@ and ast_ize_stmt (s:parse_tree) : ast_sl =
       -> [AST_assign(lhs, (ast_ize_expr expr), vloc, aloc)]
   | PT_nt("S", _, [PT_term("read", _); PT_nt("TP", _, [PT_term("int", _)]); PT_id(id, id_loc)])
       -> [AST_i_dec(id, id_loc); AST_read(id, id_loc)]
-  | PT_nt("S", _, [PT_term("read", _); PT_nt("TP", _, [PT_term("int", _)]); PT_id(id, id_loc)])
-      -> [AST_i_dec(id, id_loc); AST_read(id, id_loc)]
+  | PT_nt("S", _, [PT_term("read", _); PT_nt("TP", _, [PT_term("real", _)]); PT_id(id, id_loc)])
+      -> [AST_r_dec(id, id_loc); AST_read(id, id_loc)]
   | PT_nt("S", _, [PT_term("write", _); expr]) 
       -> [AST_write(ast_ize_expr expr)]
   | PT_nt("S", _, [PT_term("if", _); cond; sl; PT_term("fi", _)]) 
@@ -985,13 +985,21 @@ and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
 and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
-    interpret_sl (loop_count + 1) true sl mem inp outp
+  interpret_do_helper loop_count sl sl mem inp outp
+
+and interpret_do_helper loop_count remaining_sl original_sl mem inp outp =
+    match interpret_sl (loop_count+1) false remaining_sl mem inp outp with
+    | (Done, _, _, _) -> (Done, mem, inp, outp) (* Loop exits if Done is encountered *)
+    | (Bad, new_mem, new_inp, new_outp) -> (Bad, new_mem, new_inp, new_outp) (* Error handling *)
+    | (Good, new_mem, new_inp, new_outp) ->
+        interpret_do_helper loop_count original_sl original_sl new_mem new_inp new_outp
+
 
 and interpret_check (cond:ast_c) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
   match interpret_cond cond mem with
-  | (Bvalue(true), new_mem) -> (Good, new_mem, inp, outp @ ["Check succeeded!"])
+  | (Bvalue(true), new_mem) -> (Good, new_mem, inp, outp)
   | (Bvalue(false), new_mem) -> (Done, new_mem, inp, outp @ ["Check failed!"])
   | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
