@@ -829,7 +829,7 @@ type status =
 
 let rec interpret (ast:ast_sl) (full_input:string) : string =
   let inp = split (regexp "[ \t\n\r]+") full_input in
-  let (_, _, _, outp) = interpret_sl 0 true ast [[]] inp [] in
+  let (_, _, _, outp, _) = interpret_sl 0 true ast [[]] inp [] in
     (fold_left (str_cat " ") "" outp) ^ "\n"
 
 (* iter1 indicates whether this is the first time this statement list
@@ -837,19 +837,19 @@ let rec interpret (ast:ast_sl) (full_input:string) : string =
   subsequent iterations of a do loop. *)
 and interpret_sl (loop_count:int) (iter1:bool) (sl:ast_sl) (mem:memory)
                 (inp:string list) (outp:string list)
-    : status * memory * string list * string list =
+    : status * memory * string list * string list * int =
     (*  ok?   new_mem   new_input     new_output *)
   (*
     NOTICE: your code should replace the following line.
   *)
   match sl with
-  | [] -> (Good, mem, inp, outp)
+  | [] -> (Good, mem, inp, outp, loop_count)
   | s::tl ->
       let (status, new_mem, new_inp, new_outp) = interpret_s loop_count iter1 s mem inp outp in
       match status with
       | Good -> interpret_sl loop_count iter1 tl new_mem new_inp new_outp
-      | Done -> (Done, new_mem, new_inp, new_outp)
-      | Bad -> (Bad, new_mem, new_inp, new_outp)
+      | Done -> (Done, new_mem, new_inp, new_outp, loop_count)
+      | Bad -> (Bad, new_mem, new_inp, new_outp, loop_count)
   
 
 (* NB: the following routine is complete.  You can call it on any
@@ -888,7 +888,6 @@ and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
     let (new_mem, inserted) = insert_mem id v mem in
     if inserted then
     (print_endline "insert match 1 ~~~~~~~~~~~~~~~~~~~~~~~~";
-      show_mem new_mem;
       (Good, new_mem, inp, outp))(* verified execution during declaire *)
     else
       (* This case shouldn't occur since we check lookup_mem before, just for convenient of debugging *)
@@ -897,7 +896,6 @@ and interpret_dec (iter1:bool) (id:string) (v:value) (vloc:row_col)
     (* variable not declared but we are not in the first iteration of a new scope, update the memory *)
     (* print_endline "2222222222222"; *)
     (print_endline "update match 2 ~~~~~~~~~~~~~~~~~~~~";
-    show_mem mem;
     let new_mem = update_mem id v mem in
       (print_endline "dec  update";
     (Good, new_mem, inp, outp)))
@@ -987,7 +985,6 @@ and interpret_assign (lhs:string) (rhs:ast_e) (vloc:row_col) (aloc:row_col)
           (Bad, new_mem, inp, outp @ [complaint aloc s])  (* Error occurred during RHS expression evaluation *)
       | _, _ ->  (* No type mismatch or errors in evaluating the RHS expression *)
           (print_endline "before assignment~~~~~~~~~~~~~~~~~~~~~";
-            show_mem mem;
             print_endline "before update";
           let updated_mem = update_mem lhs rhs_value new_mem in
           (Good, updated_mem, inp, outp)
@@ -997,34 +994,44 @@ and interpret_if (loop_count:int) (cond:ast_c) (sl:ast_sl) (mem:memory)
                   (inp:string list) (outp:string list)
     : status * memory * string list * string list =
   match interpret_cond cond mem with
-  | (Bvalue(true), new_mem) -> interpret_sl loop_count true sl new_mem inp outp
+  | (Bvalue(true), new_mem) -> let (status, new_mem, new_inp, new_outp, loop) = 
+      interpret_sl loop_count true sl new_mem inp outp
+      in (status, new_mem, new_inp, new_outp)
   | (Bvalue(false), new_mem) -> (Good, new_mem, inp, outp)
   | _ -> raise (Failure "Condition did not evaluate to a boolean value")
 
 and interpret_do (loop_count:int) (sl:ast_sl) (mem:memory)
     (inp:string list) (outp:string list)
-  : status * memory * string list * string list =
-  let (status, new_mem, new_inp, new_outp) = interpret_sl (loop_count+1) true sl (new_scope mem) inp outp in
+  : status * memory * string list * string list =(
+    print_endline "new scope ~~~~~~~~~~~~~~~~~~~~~";
+  let (status, new_mem, new_inp, new_outp, loop) = interpret_sl (loop_count+1) true sl (new_scope mem) inp outp in
   match status with
   | Done -> (print_endline "end scope ~~~~~~~~~~~~~~~~~~~~~";(Good, (end_scope new_mem), new_inp, new_outp))
-  | Good -> ( interpret_do_helper loop_count true sl new_mem inp new_outp)
+  | Good -> (interpret_do_helper (loop_count+1) loop_count sl new_mem inp new_outp)
   | Bad -> (Bad, new_mem, new_inp, outp)
+  )
 
-and interpret_do_helper (loop_count:int) (iter:bool) (sl:ast_sl) (mem:memory)
+and interpret_do_helper (loop_count:int) (loop_min:int) (sl:ast_sl) (mem:memory)
 (inp:string list) (outp:string list) : status * memory * string list * string list =
-print_endline "helper function";
-let (status, new_mem, new_inp, new_outp) = interpret_sl (loop_count+1) false sl mem inp outp in 
+(
+  show_mem mem;
+let (status, new_mem, new_inp, new_outp, max_count) = interpret_sl loop_count (loop_count = loop_min) sl (new_scope mem) inp outp in 
     match status with
-    | Done ->
-    (print_endline "helper done end scope ~~~~~~~~~~~~~~~~~~~~~";
-     (* (Done, (end_scope new_mem), new_inp, new_outp) *)
-    (Good, (end_scope mem), new_inp, new_outp))
-    (* Loop exits if Done is encountered *)
-    | Bad -> (print_endline "helper Bad";(Bad, new_mem, new_inp, new_outp)) (* Error handling *)
+    | Bad -> (show_mem new_mem;(Bad, new_mem, new_inp, new_outp)) (* Error handling *)
     | Good ->
     (print_endline "helper Good !!!!";
-        interpret_do_helper loop_count false sl  new_mem new_inp new_outp)
-
+    show_mem new_mem;
+        interpret_do_helper (loop_count+1) (loop_min) sl new_mem new_inp new_outp)
+    | Done ->
+        let rec free_mem (count:int) (mem:memory) : memory = 
+            match count with
+            | c when c > loop_min ->
+              (print_endline ("free_mem_lv: " ^ string_of_int count); 
+            free_mem (count - 1) (end_scope new_mem) )
+            | _ ->  mem in
+            (*raise (Failure (string_of_int count ^ ": count, error!")*)
+        (Good, (free_mem max_count new_mem), new_inp, new_outp))
+    
 and interpret_check (cond:ast_c) (mem:memory)
     (inp:string list) (outp:string list)
   : status * memory * string list * string list =
@@ -1207,6 +1214,7 @@ let sum_ave_prog =
               n := n - 1
           fi
           cp := cp + 1
+          write cp
       od";;
   
   let gcd_prog =
